@@ -1,0 +1,112 @@
+
+```{r}
+# Set Quandl API
+library(Quandl)
+Quandl.api_key("rLh64-g_-ywsFYtwpLQx")
+
+library(tidyverse)
+library(lubridate)
+```
+
+## Grab data from API
+
+```{r}
+mydata<-Quandl.datatable('WIKI/PRICES', ticker=c('UNH','AET','ANTM'), date.gt="2009-01-01",
+                         qopts.columns=c("ticker", "date", "close", "adj_close"))
+
+stock_United<-Quandl.datatable('WIKI/PRICES', ticker='UNH',date.gt="1993-01-01")
+stock_Aetna<-Quandl.datatable('WIKI/PRICES', ticker='AET',date.gt="1993-01-01")
+stock_BCBS<-Quandl.datatable('WIKI/PRICES', ticker='ANTM',date.gt="1993-01-01")
+
+United<-stock_United[,c("date","adj_close")]
+Aetna<-stock_Aetna[,c("date","adj_close")]
+BCBS<-stock_BCBS[,c("date","adj_close")]
+
+United<-mutate(United, YrMonth=paste(year(date),'-', month(date),sep=''))
+Aetna<-mutate(Aetna, YrMonth=paste(year(date),'-', month(date),sep=''))
+BCBS<-mutate(BCBS, YrMonth=paste(year(date),'-', month(date),sep=''))
+
+# S&P 500 Index: INX
+SP500 <- read.csv(file="SP500_Monthly.csv", header=TRUE, sep=",")
+SP500$date<-as.yearmon(SP500$date, "%m/%d/%Y")
+colnames(SP500)[1] <- "YrMonth"
+```
+
+## Convert daily stock price into Monthly Average.
+
+```{r}
+group_by(Aetna, YrMonth) %>%
+  summarise(
+    monthly_rate<-mean(adj_close)) ->Aetna_monthly
+colnames(Aetna_monthly)[2] <- "monthly_rate"
+
+group_by(BCBS, YrMonth) %>%
+  summarise(
+    monthly_rate<-mean(adj_close)) ->BCBS_monthly
+colnames(BCBS_monthly)[2] <- "monthly_rate"
+
+group_by(United, YrMonth) %>%
+  summarise(
+    monthly_rate<-mean(adj_close)) ->United_monthly
+colnames(United_monthly)[2] <- "monthly_rate"
+
+Aetna_monthly$YrMonth<-as.yearmon(Aetna_monthly$YrMonth, "%Y-%m")
+Aetna_monthly<-arrange(Aetna_monthly,YrMonth)
+
+BCBS_monthly$YrMonth<-as.yearmon(BCBS_monthly$YrMonth, "%Y-%m")
+BCBS_monthly<-arrange(BCBS_monthly,YrMonth)
+
+United_monthly$YrMonth<-as.yearmon(United_monthly$YrMonth, "%Y-%m")
+United_monthly<-arrange(United_monthly,YrMonth)
+```
+
+## Merge Database
+
+```{r}
+Insurance_stock<-merge(x = Aetna_monthly, y = BCBS_monthly, by = "YrMonth", all = TRUE)
+colnames(Insurance_stock)[2] <- "Aetna"
+colnames(Insurance_stock)[3] <- "BCBS"
+
+Insurance_stock<-merge(x = Insurance_stock, y = United_monthly, by = "YrMonth", all = TRUE)
+colnames(Insurance_stock)[4] <- "United"
+
+Insurance_stock<-merge(x = Insurance_stock, y = SP500, by = "YrMonth", all = TRUE)
+
+Insurance_stock[,2:5]=ts(Insurance_stock[,2:5],start=c(1993,1),frequency=12)
+```
+
+## Create Return Rate
+
+```{r}
+Insurance_stock$Aetna_r[2:303]=diff(log(Insurance_stock$Aetna))
+Insurance_stock$BCBS_r[2:303]=diff(log(Insurance_stock$BCBS))
+Insurance_stock$United_r[2:303]=diff(log(Insurance_stock$United))
+Insurance_stock$SP500_r[2:303]=diff(log(Insurance_stock$SP_500))
+```  
+
+## Merge with Google Trends Data
+
+```{r}
+insurance_company <- read.csv(file="insurance_company.csv", header=TRUE, sep=",")
+insurance_company$date<-as.yearmon(insurance_company$date, "%Y-%m")
+
+insurance_company[,2:4]=ts(insurance_company[,2:4],start=c(2004,1),frequency=12)
+
+insurance_gov <- read.csv(file="healthcare_key_words.csv", header=TRUE, sep=",")
+insurance_gov$date<-as.yearmon(insurance_gov$date, "%Y-%m")
+
+insurance_gov[,2:5]=ts(insurance_gov[,2:5],start=c(2004,1),frequency=12)
+
+Google_Search<-merge(x = insurance_company, y = insurance_gov, by = "date", all = TRUE)
+colnames(Google_Search)[1] <- "YrMonth"
+
+Insurance_stock<-merge(x = Insurance_stock, y = Google_Search, by = "YrMonth", all = TRUE)
+```
+
+## Output Data to CSV
+
+```{r}
+write.csv(Insurance_stock,'insurance_stock.csv')
+```
+
+
