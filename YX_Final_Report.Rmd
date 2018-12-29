@@ -1,0 +1,254 @@
+---
+title: "How did Insurance Companies perform during the Presidency of Obama?"
+author: "Yingying Xu"
+date: "April, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(stats)
+library(astsa)
+library(forecast)
+
+library(fGarch)
+library(xts)
+library(zoo)
+
+require(quantmod)
+require(timeSeries)
+require(knitr)
+
+library(ggplot2)
+library(tidyverse)
+library(lubridate)
+``` 
+
+
+# Part 1: Background & Question
+
+## Background:
+U.S. national health expenditure reached 18% of the total GDP in 2017. During the presidency of Obama, the Affordable Care Act (Obamacare) increases the employer market, which required companies to provide employer-based insurance plans. The big insurance companies, like the United Healthcare Group, Aetna,and Blue Cross Blue Shield control the health insurance market in the country (Oligopoly). The premium of private health insurance increased dramatically during the past decade. 
+
+## Research Question:
+How did Insurance Companies perform during the Presidency of Obama?
+
+I used stock price and google search trends in the analysis. Stock price is an indicator to show the companies' market capital and google trends show the public interests over time. 
+
+Barack Obama served as the 44th President of the United States from January 20, 2009 to January 20, 2017. The Question is whether the Affordable Care Act (ACA, also called Obamacare) introduced in the presidency of Obama, increased the profits of those insurance companies and made those companies hot in the financial market. 
+
+I examined the stock growth rates and public google search trends, and formed the data (from Jan 2009 to Dec 2016) into time series models to forecast trends in 2017 and 2018. The predicted number is compared to the real data in that period. 
+
+## Database:
+Stock prices of United Healthcare Group, Aetna, Blue Cross Blue Shield Association (BCBS) were extracted from Quandl database "WIKI/PRICES", with the ticker "UNH", "AET"  and "ANTM". I converted the adjusted daily close prices into monthly data. Search data was downloaded from Google trends. All the datasets are started in Janaury, 2009 and ended in March 2018.
+
+# Part 2: Data Exploration
+
+\begin{table}[]
+\centering
+\caption{Monthly Growth Rate of Stock during the presidency of Obama, Bush and Clinton}
+\label{my-label}
+\begin{tabular}{lccc}
+                       & Obama  & Bush    & Clinton \\
+Aetna                  & 1.74\% & 1.03\%  & 0.86\%  \\
+Blue Cross Blue Shield & 1.51\% & 0.71\%  & -       \\
+United Healthcare      & 2.09\% & 0.48\%  & 1.43\%  \\
+S\&P 500               & 0.98\% & -0.43\% & 1.18\% 
+\end{tabular}
+\end{table}
+
+```{r}
+Insurance_stock <- read.csv(file="insurance_stock.csv", header=TRUE, sep=",")
+Insurance_stock <- Insurance_stock[,-1]
+```
+
+```{r}
+ts.plot(Insurance_stock[1:289,2:4],col=c(3,5,4),lwd=1.8, 
+        main="Insurance Stock Price During Clinton, Bush, Obama")
+legend("topleft", legend = c("Aetna","BCBS","United"), 
+       col = c(3,5,4), lwd=1.8, lty = 1)
+```
+
+
+```{r}
+ts.plot(Insurance_stock[193:289,6:9],col=c(3:5,2),lwd=c(1,1,1,2),
+        main="Growth Rate during the Presidency of Obama")
+legend("bottomright", legend = c("Aetna","BCBS","United","SP500"), 
+       col = c(3:5,2),lwd=c(1,1,1,2), lty = 1)
+```
+
+
+```{r}
+ts.plot(Insurance_stock[193:289,10:12],col=c(3:5),lwd=1.5,lty=1, 
+        main="Insurance Company Google Search Trends during Obama")
+legend("topright", legend = c("Aetna","BCBS","United"), col = c(3:5), lty = 1)
+```
+
+The average stock price shows during the presidency of Obama (2009-2016), the growth rates are much higher than S&P 500, and also greater than the growth rate in Bush and Clinton. It suggests some healthcare policies may bring big profits to the insurance companies. The growth rate of stocks are consistent with S&P 500 trends, but have larger variances. CCF (not shown here) indicates there is no leads between S&P 500 and insurance stocks (autocorrelation peak at zero). The google search trends show the public interests in insurance companies are relatively constant over time, and may have some seasonal pattern.
+
+# Part 3: Model Identification for Stock Price
+
+To ease the process, I will take the United Healthcare Group as an example and examine its stock price during the Presidency of Obama and Bush.
+
+### the Presidency of Barack Obama
+```{r}
+United_stock_Obama<-ts(Insurance_stock[193:289,4])
+United_rate_Obama<-ts(Insurance_stock[193:289,8])
+tsdisplay(United_stock_Obama, 
+          main="United Healthcare Stock Prices During the Presidency of Obama")
+tsdisplay(United_rate_Obama, 
+          main="United Healthcare Growth Rate During the Presidency of Obama")
+```
+
+The ACF of the United Healthcare stock price shows the stock price is a random walk with positive drift. By exmining the growth rate, I suggest the growth rate may follow an AR(2) model. 
+
+```{r}
+united_1<-sarima(United_rate_Obama,2,0,0,no.constant=FALSE, details=F)
+kable(united_1$ttable, caption="[Obama] United Health Parameter Estimates")
+```
+
+The Ljung-Box test of the standardized residuals and the residual test (not shown here) suggest the model is good, captured the short-term aurtocovariance. AR(2) with constant fits the stock growth rate during the presidency of Obama, which suggest the United Healthcare group grew with the average growth rate 0.0205 (significant), compared with the series mean 0.0209 in the begining.
+
+$$
+(r_t-0.0205)=-0.1431*(r_{t-1}-0.0205)-0.2742*(r_{t-2}-0.0205)
+$$
+
+```{r}
+par(mfrow=c(2,1))
+ts.plot(Insurance_stock[193:303,8],ylab="True Rate", 
+        main="United healthcare Stock Growth Rate with prediction")
+u1<-sarima.for(United_rate_Obama,n.ahead=14,2,0,0,no.constant=FALSE)
+```
+
+
+### the Presidency of George Bush
+
+Similar analysis for growth rate in the presidency of George Bush. 
+
+```{r}
+United_stock_Bush<-ts(Insurance_stock[97:192,4])
+United_rate_Bush<-ts(Insurance_stock[97:192,8])
+```
+
+```{r}
+united_2<-invisible(sarima(United_rate_Bush,1,0,0))
+kable(united_2$ttable, caption="[Bush] United Health Parameter Estimates")
+```
+
+```{r}
+#summary(garchFit(~arma(1,0)+garch(1,0),trace = FALSE, data=United_rate_Bush))
+united_2<-garchFit(~arma(1,0)+garch(1,0),trace = FALSE, data=United_rate_Bush)
+kable(united_2@fit$matcoef, caption="[Obama] United Health Parameter Estimates")
+```
+
+$$
+r_t=0.041+0.0185 r_{t-1}; \sigma^2_t=0.0013+0.727r^2_{t-1}
+$$
+
+
+ARMA models were used to model the conditional mean of a process when the conditional variance was constant. When examining the residuals (not shown), I found there is autocorrelation. So I adopted the GARCH and find AR(1)-GARCH(1,0) with standard error is a fit. The p-Value of Jarque-Bera Test, Shapiro-Wilk Test and Ljung-Box Test are all above the significant level. The xmean shows the adjusted growth rate is 0.51%, compared with the average number 0.48%. 
+
+Time series help us adjust the mean value when there is series correlation (Autocorrelation, etc.). By comparing the mean of the growth rate (not shown others), we find those health insurance companies performed much better than SP500 during the presidency of Obama, but I didn't find similar pattern in the presidency of Bush or Clinton, showing the health policy (Obamacare) benefits those health insurance companies a lot.
+
+
+# Part 4: Model Identification for Company Search Trends
+
+In this part, I will examine the Google search Trends of the three companies. The search trends with key words show public interests in the companies and their products.  
+
+### United Healthcare 
+```{r}
+United_Search<-ts(Insurance_stock[193:289,12])
+
+par(mfrow=c(2,1))
+plot(United_Search, main="United Healthcare Google Search During the Presidency of Obama")
+spec.ar(United_Search,log="no",main="Smoothed Periodogram: United Google Search")
+abline(v=1/12,lty=2,col="darkblue")
+
+invisible(acf2(diff(United_Search),max.lag=80, main="ACF & PACF: Diff (Search Trend)"))
+```
+
+The smoothed periodogram shows there is seasonal pattern in the series, the peak is 1/12. The ACF and PACF of the first difference shows SARIMA(1,1,0)[12] in the seasonal part. By fitting different ARMA and comparing the model fitness (AICc and BIC), I set the model as (0,1,1)(1,1,0)[12] for the United Healthcare Search Trends.  
+
+```{r}
+united_4<-invisible(sarima(United_Search,0,1,1,1,1,0,12,details=F))
+kable(united_4$ttable, caption="SARIAM(0,1,1)x(1,1,0)[12] Parameter Estimates")
+```
+
+### Aetna and Blue Cross Blue Shield
+Similar methods were used to define the time series model of Aetna and BCBS Google Search.
+
+```{r}
+Aetna_Search<-ts(Insurance_stock[193:289,10])
+BCBS_Search<-ts(Insurance_stock[193:289,11])
+
+par(mfrow=c(2,1))
+plot(Aetna_Search, main="Aetna Google Search During the Presidency of Obama")
+plot(BCBS_Search, main="BCBS Google Search During the Presidency of Obama")
+```
+
+```{r}
+#sarima(Aetna_Search,0,1,1,1,1,0,12)
+united_5<-invisible(sarima(Aetna_Search,0,1,1,1,1,0,12,details=F))
+kable(united_5$ttable, caption="SARIAM(0,1,1)x(1,1,0)[12] Parameter Estimates")
+```
+
+```{r}
+#sarima(BCBS_Search,2,0,0,1,1,1,12)
+united_6<-invisible(sarima(BCBS_Search,2,0,0,1,1,1,12,details=F))
+kable(united_6$ttable, caption="SARIAM(2,0,0)x(1,1,1)[12] Parameter Estimates")
+```
+
+## Forecast of Google Search and Compare with the real data
+
+```{r}
+par(mfrow=c(2,1))
+ts.plot(Insurance_stock[193:303,12],ylab="True Search", 
+        main="United Healthcare Google Search from 2008 to 2018")
+United_1<-sarima.for(United_Search,n.ahead=14,0,1,1,1,1,0,12)
+```
+
+```{r}
+par(mfrow=c(2,1))
+ts.plot(Insurance_stock[193:303,10],ylab="True Search", 
+        main="Aetna Google Search from 2008 to 2018")
+Aetna_1<-sarima.for(Aetna_Search,n.ahead=14,0,1,1,1,1,0,12)
+```
+
+```{r}
+par(mfrow=c(2,1))
+ts.plot(Insurance_stock[193:303,11],ylab="True Search", 
+        main="BCBS Google Search from 2008 to 2018")
+BCBS_1<-sarima.for(BCBS_Search,n.ahead=14,2,0,0,1,1,1,12)
+```
+
+As shown in the forecast plots, my model fit the seasonal google search trends well, similary to the real work trends in the records.
+
+
+## Cross Correlation between Google Search and Stock Prices
+
+Does the search trends influence the stock price? I generated the absolute value of the growth rate (United). The CCF shows there are some peaks in the left side of zero, suggesting the absolute value of growth rate leads the company's google search, which is opposite to my assumption. I suggest it may due to the rapid growth in the stock prices during the presidency of Obama, causes people's interests in the insurance company. Big changes in stock price (like big news) cause public attention to the company.
+
+```{r}
+par(mfrow=c(1,3))
+
+Aetna_r_abs <- abs(Insurance_stock[,6])
+ccf(Aetna_r_abs[193:289],Insurance_stock[193:289,12],ylab="Aetna", main="")
+
+BCBS_r_abs <- abs(Insurance_stock[,7])
+ccf(BCBS_r_abs[193:289],Insurance_stock[193:289,12],ylab="BCBS", main="")
+
+united_r_abs <- abs(Insurance_stock[,8])
+ccf(united_r_abs[193:289],Insurance_stock[193:289,12],ylab="United", main="")
+
+```
+
+# Part 5: Conclusion
+
+In summary, health insurance companies have significant higher stock growth rates during the presidency of Obama. The adjusted monthly growth rate of United Healthcare is 2.05%, which means the annual rate is about 27%. No seasonal pattern in stock growth rate is found. The seasonal pattern in searching the insurance companies on Google is strong. The predictions for the search rate are close to the true value by using seasonal arima models. However, even the stocks have strong growth rate, the search trends in the past decade are relatively constant, since the health insurance is a necessity. In addition, stock market leads Google search trends. 
+
+Future work can introduce some explantory variables and build regressions to explore the policy effects.
+
+
+
+
